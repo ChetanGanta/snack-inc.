@@ -1,0 +1,229 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // ==========================================
+    // 0. GLOBAL SAFETY NET
+    // ==========================================
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // ==========================================
+    // 1. GLOBAL HELPERS
+    // ==========================================
+    
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isEmailVerified() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() { return request.resource.data; }
+    function existing() { return resource.data; }
+
+    // AUTH TOKENS NEVER CONTAIN ROLES. WE MUST LOOK UP.
+    // caching get() is efficient within a single request evaluation.
+    function getUserData(userId) {
+      return get(/databases/$(database)/documents/users/$(userId)).data;
+    }
+
+    function isFounder() {
+      return isEmailVerified() && (
+        request.auth.token.email in ['chetanganta272@gmail.com', 'arnav@snack.com', 'navtej@snack.com', 'chetan@snack.com', 'sohan@snack.com'] ||
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && getUserData(request.auth.uid).role == 'founder')
+      );
+    }
+
+    function isAdmin() {
+      return isEmailVerified() && (
+        isFounder() || 
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && getUserData(request.auth.uid).role == 'admin')
+      );
+    }
+
+    function isDeveloper() {
+      return isEmailVerified() && (
+        isAdmin() || 
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && getUserData(request.auth.uid).role == 'developer')
+      );
+    }
+
+    function isSupport() {
+      return isEmailVerified() && (
+        isAdmin() || 
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && getUserData(request.auth.uid).role == 'support')
+      );
+    }
+
+    function hasAdminAccess() {
+      return isSupport() || isDeveloper() || isAdmin() || isFounder();
+    }
+
+    // ==========================================
+    // 2. VALIDATION BLUEPRINTS
+    // ==========================================
+
+    function isValidUser(data) {
+      return data.uid == request.auth.uid &&
+             data.email is string && data.email.size() <= 200 &&
+             data.displayName is string && data.displayName.size() <= 100 &&
+             (
+               data.role == 'user' || 
+               (data.role in ['founder', 'admin', 'developer', 'support'] && request.auth.token.email in ['chetanganta272@gmail.com', 'arnav@snack.com', 'navtej@snack.com', 'chetan@snack.com', 'sohan@snack.com'])
+             ) &&
+             (data.photoURL == null || (data.photoURL is string && data.photoURL.size() <= 500));
+    }
+
+    function isValidBot(data) {
+      return data.keys().hasAll(['name', 'price', 'language']) &&
+             data.name is string && data.name.size() <= 100 &&
+             data.price is number && data.price >= 0 &&
+             data.language in ['Python', 'Node.js', 'Rust', 'Go'] &&
+             (data.hasDemo == null || data.hasDemo is bool) &&
+             (data.averageRating == null || data.averageRating is number) &&
+             (data.ratingCount == null || data.ratingCount is number) &&
+             (!('description' in data) || (data.description is string && data.description.size() <= 1000)) &&
+             (!('longDescription' in data) || (data.longDescription is string && data.longDescription.size() <= 10000));
+    }
+
+    function isValidPurchase(data) {
+      return data.userId == request.auth.uid &&
+             isValidId(data.botId) &&
+             data.status in ['completed', 'refunded', 'trial', 'canceled'] &&
+             (data.licenseKey == null || (data.licenseKey is string && data.licenseKey.size() <= 256));
+    }
+
+    function isValidNotification(data) {
+      return isValidId(data.userId) &&
+             data.title is string && data.title.size() <= 200 &&
+             data.message is string && data.message.size() <= 2000 &&
+             data.type in ['message', 'ticket', 'purchase', 'system'] &&
+             data.isRead is bool;
+    }
+
+    // ==========================================
+    // 3. COLLECTION RULES
+    // ==========================================
+
+    // Users
+    match /users/{userId} {
+      allow list: if hasAdminAccess();
+      allow get: if (isOwner(userId) || hasAdminAccess()) && isValidId(userId);
+      allow create: if isOwner(userId) && isValidUser(incoming());
+      allow update: if isValidId(userId) && (
+        (isOwner(userId) && incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'photoURL', 'bio', 'github', 'website', 'updatedAt', 'favoriteBots', 'isFavorite'])) ||
+        (isAdmin() && incoming().diff(existing()).affectedKeys().hasOnly(['role', 'permissions']))
+      );
+    }
+
+    // Bots
+    match /bots/{botId} {
+      allow list: if true;
+      allow get: if isValidId(botId);
+      allow create: if isDeveloper() && isValidId(botId) && isValidBot(incoming());
+      allow update: if isValidId(botId) && (
+        (isDeveloper() && isValidBot(incoming())) ||
+        (isSignedIn() && (incoming().diff(existing()).affectedKeys().hasOnly(['averageRating', 'ratingCount']) || incoming().diff(existing()).affectedKeys().hasOnly(['popularity', 'lastPurchasedAt'])))
+      );
+      allow delete: if isAdmin() && isValidId(botId);
+    }
+
+    // Purchases
+    match /purchases/{purchaseId} {
+      allow list: if isSignedIn() && (resource.data.userId == request.auth.uid || hasAdminAccess());
+      allow get: if isValidId(purchaseId) && (resource.data.userId == request.auth.uid || hasAdminAccess());
+      allow create: if isSignedIn() && isValidId(purchaseId) && isValidPurchase(incoming());
+      allow update: if isValidId(purchaseId) && (
+        isAdmin() || 
+        (isSignedIn() && (existing().userId == 'SYSTEM' || existing().userId == null) && incoming().userId == request.auth.uid)
+      );
+      allow delete: if isAdmin() && isValidId(purchaseId);
+    }
+
+    // Subscriptions
+    match /subscriptions/{subId} {
+      allow list: if isSignedIn() && (resource.data.userId == request.auth.uid || hasAdminAccess());
+      allow get: if isValidId(subId) && (resource.data.userId == request.auth.uid || hasAdminAccess());
+      allow write: if false; // Strict server-side only
+    }
+
+    // Ratings
+    match /ratings/{ratingId} {
+      allow read: if isValidId(ratingId);
+      allow create: if isEmailVerified() && isValidId(ratingId) && 
+        incoming().userId == request.auth.uid &&
+        incoming().rating is number && incoming().rating >= 1 && incoming().rating <= 5;
+      allow update: if isEmailVerified() && isValidId(ratingId) && resource.data.userId == request.auth.uid &&
+        incoming().rating is number && incoming().rating >= 1 && incoming().rating <= 5;
+      allow delete: if isAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid);
+    }
+
+    // Tickets
+    match /tickets/{ticketId} {
+      allow list: if isSupport() || (isSignedIn() && resource.data.userId == request.auth.uid);
+      allow get: if isValidId(ticketId) && (isSupport() || resource.data.userId == request.auth.uid);
+      allow create: if isEmailVerified() && isValidId(ticketId) && incoming().userId == request.auth.uid;
+      allow update: if isSupport() && isValidId(ticketId);
+    }
+
+    // Support Chats
+    match /support_chats/{chatId} {
+      allow list: if isSupport() || (isSignedIn() && resource.data.userId == request.auth.uid);
+      allow get: if isValidId(chatId) && (isSupport() || resource.data.userId == request.auth.uid);
+      allow create: if isEmailVerified() && isValidId(chatId) && incoming().userId == request.auth.uid;
+      allow update: if isValidId(chatId) && (isSupport() || (isOwner(existing().userId) && incoming().userId == request.auth.uid));
+      
+      match /messages/{messageId} {
+        allow list, get: if isSupport() || isOwner(get(/databases/$(database)/documents/support_chats/$(chatId)).data.userId);
+        allow create: if isValidId(messageId) && (
+          (isSupport() && incoming().senderType == 'admin') ||
+          (isOwner(get(/databases/$(database)/documents/support_chats/$(chatId)).data.userId) && incoming().senderType == 'user')
+        );
+      }
+    }
+
+    // Notifications
+    match /notifications/{notificationId} {
+      allow list: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow get: if isValidId(notificationId) && resource.data.userId == request.auth.uid;
+      allow update: if isValidId(notificationId) && isOwner(existing().userId) && incoming().diff(existing()).affectedKeys().hasOnly(['isRead']);
+      allow create: if isSupport() || (isSignedIn() && incoming().userId == request.auth.uid && isValidNotification(incoming()));
+      allow delete: if isValidId(notificationId) && isOwner(existing().userId);
+    }
+
+    // Workflow Tasks
+    match /workflow_tasks/{taskId} {
+      allow list, get: if hasAdminAccess();
+      allow create: if isAdmin() && isValidId(taskId) && incoming().status == 'PENDING';
+      allow update: if isValidId(taskId) && (isAdmin() || (hasAdminAccess() && existing().assignedTo == request.auth.uid && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt'])));
+      allow delete: if isAdmin() && isValidId(taskId);
+    }
+
+    // Audit Logs
+    match /audit_logs/{logId} {
+      allow read, create: if isAdmin() && isValidId(logId);
+    }
+
+    // Coupons
+    match /coupons/{couponId} {
+      allow read, write: if isAdmin() && isValidId(couponId);
+    }
+
+    // Key Registry
+    match /key_registry/{key} {
+      allow get: if isSignedIn();
+      allow write: if isAdmin();
+    }
+  }
+}

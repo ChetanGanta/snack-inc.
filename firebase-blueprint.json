@@ -1,0 +1,232 @@
+{
+  "entities": {
+    "User": {
+      "title": "User Profile",
+      "description": "Extended user profile information stored in Firestore",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string" },
+        "displayName": { "type": "string" },
+        "photoURL": { "type": "string" },
+        "role": { "type": "string", "enum": ["founder", "admin", "developer", "user"] },
+        "stripeCustomerId": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "email"]
+    },
+    "Bot": {
+      "title": "Bot Product",
+      "description": "Metadata for a bot or automation tool available for purchase",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "description": { "type": "string" },
+        "longDescription": { "type": "string" },
+        "price": { "type": "number" },
+        "isSubscription": { "type": "boolean" },
+        "language": { "type": "string", "enum": ["Python", "Node.js"] },
+        "category": { "type": "string" },
+        "version": { "type": "string" },
+        "githubRepo": { "type": "string" },
+        "trending": { "type": "boolean" },
+        "newArrival": { "type": "boolean" },
+        "averageRating": { "type": "number" },
+        "ratingCount": { "type": "number" },
+        "hasDemo": { "type": "boolean" },
+        "trialPeriodDays": { "type": "number" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "price", "language"]
+    },
+    "Rating": {
+      "title": "User Rating",
+      "description": "A user rating for a bot module",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "botId": { "type": "string" },
+        "rating": { "type": "number" },
+        "comment": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "botId", "rating"]
+    },
+    "Purchase": {
+      "title": "Purchase Record",
+      "description": "Record of a bot purchase by a user",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "botId": { "type": "string" },
+        "licenseKey": { "type": "string" },
+        "purchaseDate": { "type": "string", "format": "date-time" },
+        "status": { "type": "string", "enum": ["completed", "refunded", "trial"] },
+        "trialEndsAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "botId", "licenseKey"]
+    },
+    "Ticket": {
+      "title": "Support Ticket",
+      "description": "A technical inquiry from a user",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "subject": { "type": "string" },
+        "message": { "type": "string" },
+        "status": { "type": "string", "enum": ["open", "resolved", "closed"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "subject", "message"]
+    },
+    "AuditLog": {
+      "title": "Administrative Audit Log",
+      "description": "Records of high-level administrative actions for security tracking",
+      "type": "object",
+      "properties": {
+        "adminId": { "type": "string" },
+        "adminEmail": { "type": "string" },
+        "action": { "type": "string" },
+        "details": { "type": "string" },
+        "targetId": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" }
+      },
+      "required": ["adminId", "adminEmail", "action", "timestamp"]
+    },
+    "SupportChat": {
+      "title": "Live Support Chat Session",
+      "description": "Active real-time communication session between a user and support",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "userName": { "type": "string" },
+        "status": { "type": "string", "enum": ["active", "closed"] },
+        "lastMessage": { "type": "string" },
+        "updatedAt": { "type": "string", "format": "date-time" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "status", "createdAt"]
+    },
+    "ChatMessage": {
+      "title": "Chat Message",
+      "description": "Individual message within a live support session",
+      "type": "object",
+      "properties": {
+        "chatId": { "type": "string" },
+        "text": { "type": "string" },
+        "senderId": { "type": "string" },
+        "senderType": { "type": "string", "enum": ["user", "admin"] },
+        "senderName": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["chatId", "text", "senderId", "senderType", "createdAt"]
+    },
+    "Notification": {
+      "title": "User Notification",
+      "description": "Alert for important events related to the user",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "title": { "type": "string" },
+        "message": { "type": "string" },
+        "type": { "type": "string", "enum": ["message", "ticket", "purchase", "system"] },
+        "link": { "type": "string" },
+        "isRead": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "title", "message", "type", "isRead", "createdAt"]
+    },
+    "Subscription": {
+      "title": "Active Subscription",
+      "description": "User subscription details managed by Stripe",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "botId": { "type": "string" },
+        "stripeSubscriptionId": { "type": "string" },
+        "stripeCustomerId": { "type": "string" },
+        "status": { "type": "string", "enum": ["active", "canceled", "past_due", "incomplete"] },
+        "currentPeriodEnd": { "type": "string", "format": "date-time" },
+        "cancelAtPeriodEnd": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "stripeSubscriptionId", "status"]
+    },
+    "WorkflowTask": {
+      "title": "Team Operational Task",
+      "description": "Internal task assigned to a team member for operational maintenance",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "assignedTo": { "type": "string" },
+        "assignedToName": { "type": "string" },
+        "assignedToRole": { "type": "string" },
+        "status": { "type": "string", "enum": ["PENDING", "IN_PROGRESS", "COMPLETED", "CANCELLED"] },
+        "priority": { "type": "string", "enum": ["LOW", "MEDIUM", "HIGH", "CRITICAL"] },
+        "createdBy": { "type": "string" },
+        "createdByName": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "dueDate": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["title", "assignedTo", "status", "priority", "createdBy"]
+    }
+  },
+  "firestore": {
+    "/workflow_tasks/{taskId}": {
+      "schema": "WorkflowTask",
+      "description": "Internal team task management"
+    },
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User profiles"
+    },
+    "/bots/{botId}": {
+      "schema": "Bot",
+      "description": "Marketplace bot listings"
+    },
+    "/purchases/{purchaseId}": {
+      "schema": "Purchase",
+      "description": "Successful purchases"
+    },
+    "/subscriptions/{subId}": {
+      "schema": "Subscription",
+      "description": "Active recurring subscriptions"
+    },
+    "/key_registry/{licenseKey}": {
+      "schema": {
+        "type": "object",
+        "properties": {
+          "purchaseId": { "type": "string" }
+        }
+      },
+      "description": "Reverse lookup registry for license key redemption"
+    },
+    "/tickets/{ticketId}": {
+      "schema": "Ticket",
+      "description": "Support inquiries"
+    },
+    "/ratings/{ratingId}": {
+      "schema": "Rating",
+      "description": "User feedback and scores"
+    },
+    "/audit_logs/{logId}": {
+      "schema": "AuditLog",
+      "description": "Admin action history"
+    },
+    "/support_chats/{chatId}": {
+      "schema": "SupportChat",
+      "description": "Live support chat sessions"
+    },
+    "/support_chats/{chatId}/messages/{messageId}": {
+      "schema": "ChatMessage",
+      "description": "Messages within a live support session"
+    },
+    "/notifications/{notificationId}": {
+      "schema": "Notification",
+      "description": "User specific real-time notifications"
+    }
+  }
+}
